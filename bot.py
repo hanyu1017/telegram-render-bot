@@ -1,8 +1,12 @@
 import os
-import pytz
 import asyncio
+import pytz
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes
+)
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 TOKEN = os.environ.get("BOT_TOKEN", "")
@@ -16,9 +20,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def main():
     scheduler = AsyncIOScheduler(timezone=pytz.UTC)
     scheduler.start()
+
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    await app.run_polling()
 
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    print("✅ Bot 已啟動並正在 Render 上運作...")
+
+# ✅ 改用 create_task + run_forever，讓 Render 不報錯
 if __name__ == "__main__":
-    asyncio.run(main())
+    loop = asyncio.get_event_loop()
+    loop.create_task(main())
+    loop.run_forever()
