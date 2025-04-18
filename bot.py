@@ -92,8 +92,7 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     count = 0
     for chat_id in get_all_subscribers():
         try:
-            await context.bot.send_message(chat_id=int(chat_id), text=f"📢 管理員公告：
-{msg}")
+            await context.bot.send_message(chat_id=int(chat_id), text=f"📢 管理員公告：{msg}")
             count += 1
         except Exception as e:
             print(f"❌ 傳送失敗 chat_id={chat_id}: {e}")
