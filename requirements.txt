@@ -1,4 +1,5 @@
 python-telegram-bot==20.6
 pytz
+openai
 apscheduler
 firebase-admin==6.2.0
