@@ -62,4 +62,11 @@ async def main():
     await app.run_polling()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import sys
+    if sys.platform.startswith("win") or sys.platform == "darwin":
+        asyncio.run(main())
+    else:
+        # for environments that already run an event loop (e.g. Railway)
+        loop = asyncio.get_event_loop()
+        loop.create_task(main())
+        loop.run_forever()
