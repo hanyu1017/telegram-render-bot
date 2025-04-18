@@ -45,8 +45,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await subscribe_user(chat_id)
     keyboard = [[InlineKeyboardButton("打開 Mini App", web_app={"url": WEB_APP_URL})]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("✅ 你已訂閱碳排通知。
-可輸入 /cancel 取消通知。", reply_markup=reply_markup)
+    await update.message.reply_text("✅ 你已訂閱碳排通知。可輸入 /cancel 取消通知。", reply_markup=reply_markup)
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
