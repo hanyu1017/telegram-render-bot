@@ -50,8 +50,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = [[InlineKeyboardButton("打開 Mini App", web_app={"url": WEB_APP_URL})]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("✅ 你已訂閱碳排通知。
-可輸入 /cancel 取消通知。", reply_markup=reply_markup)
+    await update.message.reply_text("✅ 你已訂閱碳排通知。可輸入 /cancel 取消通知。", reply_markup=reply_markup)
 
 # /cancel 取消訂閱
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
