@@ -36,19 +36,29 @@ async def ask_gpt(prompt: str) -> str:
         headers = {
             "Authorization": f"Bearer {OPENROUTER_API_KEY}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://cfmcloud.web.app",  # 改為你自己的網址
+            "HTTP-Referer": "https://cfmcloud.web.app",  # 改成你的網址
             "X-Title": "CFMcloud GPT Agent"
         }
         payload = {
-            "model": "openai/gpt-3.5-turbo",  # 也可改成 gpt-4
+            "model": "openai/gpt-3.5-turbo",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.7
         }
         response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
-        result = response.json()
-        return result["choices"][0]["message"]["content"]
+        data = response.json()
+
+        # Debug 用：列印回傳 JSON 結構
+        print("GPT 回應：", data)
+
+        if "choices" in data:
+            return data["choices"][0]["message"]["content"]
+        elif "error" in data:
+            return f"❌ GPT 回應錯誤：{data['error'].get('message', '未知錯誤')}"
+        else:
+            return f"❌ GPT 回傳格式異常，無法解析。原始回應：{data}"
     except Exception as e:
         return f"❌ GPT 回應錯誤：{e}"
+
 
 # === 訂閱管理 ===
 async def subscribe_user(chat_id):
@@ -117,33 +127,14 @@ async def carbon(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = f"❌ 發生錯誤：{e}"
     await update.message.reply_text(text)
 
-async def ask_gpt(prompt: str) -> str:
-    try:
-        headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://cfmcloud.web.app",  # 改成你的網址
-            "X-Title": "CFMcloud GPT Agent"
-        }
-        payload = {
-            "model": "openai/gpt-3.5-turbo",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.7
-        }
-        response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
-        data = response.json()
-
-        # Debug 用：列印回傳 JSON 結構
-        print("GPT 回應：", data)
-
-        if "choices" in data:
-            return data["choices"][0]["message"]["content"]
-        elif "error" in data:
-            return f"❌ GPT 回應錯誤：{data['error'].get('message', '未知錯誤')}"
-        else:
-            return f"❌ GPT 回傳格式異常，無法解析。原始回應：{data}"
-    except Exception as e:
-        return f"❌ GPT 回應錯誤：{e}"
+async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    prompt = " ".join(context.args)
+    if not prompt:
+        await update.message.reply_text("請輸入你想問的問題，例如：/ask 碳排放過高怎麼辦？")
+        return
+    await update.message.reply_text("🤖 正在思考中...")
+    reply = await ask_gpt(prompt)
+    await update.message.reply_text(reply)
 
 # === 定時任務 ===
 async def scheduled_task(application):
@@ -174,7 +165,7 @@ async def main():
 
     scheduler = AsyncIOScheduler(timezone=pytz.UTC)
     loop = asyncio.get_event_loop()
-    scheduler.add_job(lambda: asyncio.run_coroutine_threadsafe(scheduled_task(app), loop), "interval", hours=1)
+    scheduler.add_job(lambda: asyncio.run_coroutine_threadsafe(scheduled_task(app), loop), "interval", minutes=2)
     scheduler.start()
 
     await app.initialize()
