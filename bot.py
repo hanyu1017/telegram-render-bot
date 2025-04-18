@@ -1,66 +1,62 @@
+
 import os
 import asyncio
 import pytz
 import json
 import random
-import requests
 from datetime import datetime
+import requests
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     ContextTypes,
-    MessageHandler,
-    filters,
 )
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import firebase_admin
 from firebase_admin import credentials, firestore
+from openai import OpenAI
 
 # === 環境變數 ===
 TOKEN = os.getenv("BOT_TOKEN", "")
 WEB_APP_URL = os.getenv("WEB_APP_URL", "https://cfmcloud.web.app")
 FIREBASE_CREDENTIALS_JSON = os.getenv("FIREBASE_CREDENTIALS_JSON", "")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
-# === Firebase 初始化 ===
+# === 初始化 OpenAI 客戶端 ===
+client = OpenAI(api_key=OPENAI_API_KEY)
+
+# === 初始化 Firebase ===
 if not firebase_admin._apps:
     cred = credentials.Certificate(json.loads(FIREBASE_CREDENTIALS_JSON))
     firebase_admin.initialize_app(cred)
 db = firestore.client()
 SUBSCRIBERS_REF = db.collection("bot_subscribers")
 
-# === GPT 問答函式 ===
-async def ask_gpt(prompt: str) -> str:
+# === GPT 回答功能 ===
+async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    prompt = " ".join(context.args)
+    if not prompt:
+        await update.message.reply_text("請輸入你想問的問題，例如：/ask 碳排放是什麼？")
+        return
+
+    await update.message.reply_text("🤖 正在思考中，請稍候...")
+
     try:
-        headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://cfmcloud.web.app",  # 改成你的網址
-            "X-Title": "CFMcloud GPT Agent"
-        }
-        payload = {
-            "model": "openai/gpt-3.5-turbo",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.7
-        }
-        response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
-        data = response.json()
-
-        # Debug 用：列印回傳 JSON 結構
-        print("GPT 回應：", data)
-
-        if "choices" in data:
-            return data["choices"][0]["message"]["content"]
-        elif "error" in data:
-            return f"❌ GPT 回應錯誤：{data['error'].get('message', '未知錯誤')}"
-        else:
-            return f"❌ GPT 回傳格式異常，無法解析。原始回應：{data}"
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "你是一位了解碳排放與企業管理的助理。"},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7
+        )
+        answer = response.choices[0].message.content
+        await update.message.reply_text(answer)
     except Exception as e:
-        return f"❌ GPT 回應錯誤：{e}"
+        await update.message.reply_text(f"❌ GPT 回應失敗：{e}")
 
-
-# === 訂閱管理 ===
+# === 訂閱與通知 ===
 async def subscribe_user(chat_id):
     SUBSCRIBERS_REF.document(str(chat_id)).set({"subscribed": True})
 
@@ -70,7 +66,7 @@ async def unsubscribe_user(chat_id):
 def get_all_subscribers():
     return [doc.id for doc in SUBSCRIBERS_REF.stream()]
 
-# === Bot 指令 ===
+# === 指令 ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     await subscribe_user(chat_id)
@@ -85,7 +81,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def list_subscribers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     subs = get_all_subscribers()
-    text = "📋 訂閱者 chat_id 清單：\n" + "\n".join(subs) if subs else "目前沒有任何訂閱者。"
+    text = "📋 訂閱者 chat_id 清單：" + "".join(subs) if subs else "目前沒有任何訂閱者。"
     await update.message.reply_text(text)
 
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -96,7 +92,8 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     count = 0
     for chat_id in get_all_subscribers():
         try:
-            await context.bot.send_message(chat_id=int(chat_id), text=f"📢 管理員公告：\n{msg}")
+            await context.bot.send_message(chat_id=int(chat_id), text=f"📢 管理員公告：
+{msg}")
             count += 1
         except Exception as e:
             print(f"❌ 傳送失敗 chat_id={chat_id}: {e}")
@@ -116,9 +113,9 @@ async def carbon(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if latest:
             data = latest.to_dict()
             text = (
-                f"📊 最新碳排資料：\n"
-                f"🏭 工廠：{data['plant']}\n"
-                f"🌿 CO₂e：{data['co2e']} kg\n"
+                f"📊 最新碳排資料："
+                f"🏭 工廠：{data['plant']}"
+                f"🌿 CO₂e：{data['co2e']} kg"
                 f"🕒 時間：{data['timestamp']}"
             )
         else:
@@ -126,15 +123,6 @@ async def carbon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         text = f"❌ 發生錯誤：{e}"
     await update.message.reply_text(text)
-
-async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    prompt = " ".join(context.args)
-    if not prompt:
-        await update.message.reply_text("請輸入你想問的問題，例如：/ask 碳排放過高怎麼辦？")
-        return
-    await update.message.reply_text("🤖 正在思考中...")
-    reply = await ask_gpt(prompt)
-    await update.message.reply_text(reply)
 
 # === 定時任務 ===
 async def scheduled_task(application):
@@ -148,7 +136,10 @@ async def scheduled_task(application):
         try:
             await application.bot.send_message(
                 chat_id=int(chat_id),
-                text=(f"📡 自動上傳碳排資料：\n🏭 {data['plant']}\n🌿 {data['co2e']} kg CO₂e\n🕒 {data['timestamp']}")
+                text=(f"📡 自動上傳碳排資料：
+                🏭 {data['plant']}
+                🌿 {data['co2e']} kg CO₂e
+                🕒 {data['timestamp']}")
             )
         except Exception as e:
             print(f"❌ 傳送失敗 chat_id={chat_id}: {e}")
@@ -165,7 +156,7 @@ async def main():
 
     scheduler = AsyncIOScheduler(timezone=pytz.UTC)
     loop = asyncio.get_event_loop()
-    scheduler.add_job(lambda: asyncio.run_coroutine_threadsafe(scheduled_task(app), loop), "interval", minutes=2)
+    scheduler.add_job(lambda: asyncio.run_coroutine_threadsafe(scheduled_task(app), loop), "interval", hour=1)
     scheduler.start()
 
     await app.initialize()
