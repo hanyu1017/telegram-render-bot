@@ -133,13 +133,12 @@ async def scheduled_task(application):
     db.collection("carbon_data").document("logs").collection("entries").add(data)
     for chat_id in get_all_subscribers():
         try:
-            await application.bot.send_message(
-                chat_id=int(chat_id),
-                text=(f"📡 自動上傳碳排資料：
-                🏭 {data['plant']}
-                🌿 {data['co2e']} kg CO₂e
-                🕒 {data['timestamp']}")
-            )
+            await application.bot.send_message( chat_id=int(chat_id), 
+                                               text=( f"📡 自動上傳碳排資料：\n" 
+                                                     f"🏭 {data['plant']}\n
+                                                     🌿 {data['co2e']} kg CO₂e\n
+                                                     🕒 {data['timestamp']}" ) ) 
+        
         except Exception as e:
             print(f"❌ 傳送失敗 chat_id={chat_id}: {e}")
 
