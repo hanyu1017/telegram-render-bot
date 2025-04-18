@@ -15,6 +15,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import firebase_admin
 from firebase_admin import credentials, firestore
 import openai
+from openai import OpenAI  # 新版用法
 
 # 設定 OpenAI API Key
 openai.api_key = os.getenv("OPENAI_API_KEY", "")
@@ -107,21 +108,26 @@ async def carbon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text)
 
 # /ask
+
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = " ".join(context.args)
     if not query:
-        await update.message.reply_text("請輸入問題，例如：/ask 碳排放合格標準？")
+        await update.message.reply_text("請輸入問題，例如：/ask 什麼是碳足跡？")
         return
+
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": query}]
         )
         answer = response.choices[0].message.content
         await update.message.reply_text(answer)
     except Exception as e:
-        logging.error(e)
-        await update.message.reply_text("❌ 發生錯誤，請稍後再試。")
+        import logging
+        logging.error(f"GPT 錯誤：{e}")
+        await update.message.reply_text("❌ 無法取得回應，請稍後再試。")
 
 # 定時任務
 async def scheduled_task(application):
