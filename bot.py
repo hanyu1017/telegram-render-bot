@@ -129,7 +129,7 @@ async def main():
     app.add_handler(CommandHandler("carbon", carbon))
 
     scheduler = AsyncIOScheduler(timezone=pytz.UTC)
-    scheduler.add_job(lambda: asyncio.create_task(scheduled_task(app)), "interval", hours=1)
+    scheduler.add_job(lambda: asyncio.create_task(scheduled_task(app)), "interval", minutes=2)
     scheduler.start()
 
     await app.initialize()
