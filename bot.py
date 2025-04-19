@@ -153,7 +153,7 @@ async def main():
 
     scheduler = AsyncIOScheduler(timezone=pytz.timezone("Asia/Taipei"))
     loop = asyncio.get_event_loop()
-    scheduler.add_job(lambda: asyncio.run_coroutine_threadsafe(scheduled_task(app), loop), "interval", minutes=2)
+    scheduler.add_job(lambda: asyncio.run_coroutine_threadsafe(scheduled_task(app), loop), "interval", hours=1)
     scheduler.start()
 
     await app.initialize()
