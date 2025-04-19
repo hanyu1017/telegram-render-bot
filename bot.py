@@ -74,14 +74,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 按鈕連結
     keyboard = [
         [
-            InlineKeyboardButton("📊 開啟碳排儀表板", web_app={"url": WEB_APP_URL}),
+            InlineKeyboardButton("📊 碳排儀表板", web_app={"url": WEB_APP_URL}),
             InlineKeyboardButton("🧠 模型決策系統", url="https://your-model-decision-system.web.app")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await update.message.reply_text(
-        "✅ 你已訂閱碳排通知。\n\n請選擇功能：",
+        "歡迎使用碳排監控雲\n✅ 你已訂閱碳排通知。\n關閉碳排通知請入/cancel\n\n請選擇功能：",
         reply_markup=reply_markup
     )
 
