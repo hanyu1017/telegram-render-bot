@@ -70,9 +70,21 @@ def get_all_subscribers():
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     await subscribe_user(chat_id)
-    keyboard = [[InlineKeyboardButton("打開 Mini App", web_app={"url": WEB_APP_URL})]]
+
+    # 按鈕連結
+    keyboard = [
+        [
+            InlineKeyboardButton("📊 開啟碳排儀表板", web_app={"url": WEB_APP_URL}),
+            InlineKeyboardButton("🧠 模型決策系統", url="https://your-model-decision-system.web.app")
+        ]
+    ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("✅ 你已訂閱碳排通知。可輸入 /cancel 取消通知。", reply_markup=reply_markup)
+
+    await update.message.reply_text(
+        "✅ 你已訂閱碳排通知。\n\n請選擇功能：",
+        reply_markup=reply_markup
+    )
+
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
