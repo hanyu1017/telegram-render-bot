@@ -75,7 +75,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [
             InlineKeyboardButton("📊 碳排儀表板", web_app={"url": WEB_APP_URL}),
-            InlineKeyboardButton("🧠 模型決策系統", url="https://your-model-decision-system.web.app")
+            InlineKeyboardButton("🧠 模型決策系統", url="https://cfmcloud.web.app/carbon-model.html")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
