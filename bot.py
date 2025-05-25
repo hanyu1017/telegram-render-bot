@@ -19,7 +19,7 @@ from openai import OpenAI
 
 # === 環境變數 ===
 TOKEN = os.getenv("BOT_TOKEN", "")
-WEB_APP_URL = os.getenv("WEB_APP_URL", "https://cfmcloud.web.app")
+WEB_APP_URL = os.getenv("WEB_APP_URL", "https://cfmcloud.vercel.app/")
 FIREBASE_CREDENTIALS_JSON = os.getenv("FIREBASE_CREDENTIALS_JSON", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
@@ -75,7 +75,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [
             InlineKeyboardButton("📊 碳排儀表板", web_app={"url": WEB_APP_URL}),
-            InlineKeyboardButton("🧠 模型決策系統", url="https://cfmcloud.web.app/carbon-model.html")
+            InlineKeyboardButton("🧠 模型決策系統", url="https://cfmcloud.vercel.app/models")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
