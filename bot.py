@@ -19,7 +19,7 @@ from openai import OpenAI
 
 # === 環境變數 ===
 TOKEN = os.getenv("BOT_TOKEN", "")
-WEB_APP_URL = os.getenv("WEB_APP_URL", "https://cfmcloud.vercel.app/")
+WEB_APP_URL = os.getenv("WEB_APP_URL", "https://cfmcloud.vercel.app")
 FIREBASE_CREDENTIALS_JSON = os.getenv("FIREBASE_CREDENTIALS_JSON", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
