@@ -1,5 +1,4 @@
 import os
-import asyncio
 import json
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -299,7 +298,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(instruction, parse_mode='Markdown')
 
 # === 主程式 ===
-async def main():
+def main():
     if not TOKEN:
         print("❌ 請設定 BOT_TOKEN 環境變數")
         return
@@ -307,6 +306,7 @@ async def main():
     if not OPENAI_API_KEY:
         print("⚠️ 未設定 OPENAI_API_KEY，AI問答功能將無法使用")
 
+    # 建立應用程式
     app = ApplicationBuilder().token(TOKEN).build()
     
     # 添加指令處理器
@@ -314,11 +314,12 @@ async def main():
     app.add_handler(CommandHandler("ask", ask))
     app.add_handler(CallbackQueryHandler(button_callback))
 
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
-    print("✅ 智能多角色AI助理Bot已啟動！")
+    # 啟動 Bot
+    print("✅ 智能多角色AI助理Bot啟動中...")
     print("📋 可用指令：/start (選擇身份) + /ask (AI問答)")
+    
+    # 使用 run_polling 方法，這是最穩定的方式
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
