@@ -1,179 +1,324 @@
-
 import os
 import asyncio
-import pytz
 import json
-import random
-from datetime import datetime
-import requests
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
+    CallbackQueryHandler,
     ContextTypes,
 )
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-import firebase_admin
-from firebase_admin import credentials, firestore
 from openai import OpenAI
 
 # === 環境變數 ===
 TOKEN = os.getenv("BOT_TOKEN", "")
 WEB_APP_URL = os.getenv("WEB_APP_URL", "https://cfmcloud.vercel.app")
-FIREBASE_CREDENTIALS_JSON = os.getenv("FIREBASE_CREDENTIALS_JSON", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 # === 初始化 OpenAI 客戶端 ===
-client = OpenAI(api_key=OPENAI_API_KEY)
+client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
-# === 初始化 Firebase ===
-if not firebase_admin._apps:
-    cred = credentials.Certificate(json.loads(FIREBASE_CREDENTIALS_JSON))
-    firebase_admin.initialize_app(cred)
-db = firestore.client()
-SUBSCRIBERS_REF = db.collection("bot_subscribers")
+# === 內存存儲 ===
+USER_ROLES = {}  # 存儲用戶身份
 
-# === GPT 回答功能 ===
+# === 模擬汽車訂單資料 ===
+CAR_MODELS = {
+    "Tesla Model 3": {"wait_time": "2-3個月", "delivery_estimate": "預計2025年9-10月交車"},
+    "Tesla Model Y": {"wait_time": "3-4個月", "delivery_estimate": "預計2025年10-11月交車"},
+    "Tesla Model S": {"wait_time": "4-5個月", "delivery_estimate": "預計2025年11-12月交車"},
+    "Tesla Model X": {"wait_time": "5-6個月", "delivery_estimate": "預計2026年1-2月交車"},
+    "BYD Han": {"wait_time": "1-2個月", "delivery_estimate": "預計2025年8-9月交車"},
+    "BYD Tang": {"wait_time": "2-3個月", "delivery_estimate": "預計2025年9-10月交車"},
+    "BMW iX": {"wait_time": "6-8個月", "delivery_estimate": "預計2026年1-3月交車"},
+    "Audi e-tron": {"wait_time": "4-6個月", "delivery_estimate": "預計2025年11月-2026年1月交車"},
+}
+
+# 模擬客戶訂單資料
+CUSTOMER_ORDERS = {
+    "T001": {
+        "customer_name": "王小明",
+        "model": "Tesla Model 3",
+        "order_date": "2025-05-15",
+        "status": "生產中",
+        "estimated_delivery": "2025-09-20",
+        "current_progress": "車輛已進入最終組裝階段"
+    },
+    "T002": {
+        "customer_name": "李美華",
+        "model": "Tesla Model Y",
+        "order_date": "2025-04-20",
+        "status": "準備出貨",
+        "estimated_delivery": "2025-08-15",
+        "current_progress": "車輛品質檢測完成，準備發送"
+    },
+    "B001": {
+        "customer_name": "陳志偉",
+        "model": "BYD Han",
+        "order_date": "2025-06-01",
+        "status": "排程生產",
+        "estimated_delivery": "2025-08-30",
+        "current_progress": "訂單已確認，排入生產排程"
+    },
+    "B002": {
+        "customer_name": "張雅婷",
+        "model": "BYD Tang",
+        "order_date": "2025-05-10",
+        "status": "生產中",
+        "estimated_delivery": "2025-09-10",
+        "current_progress": "電池系統安裝中"
+    }
+}
+
+# === ESG與碳排放相關資料 ===
+ESG_DATA = {
+    "carbon_reduction_targets": {
+        "2025": "減少25%碳排放",
+        "2030": "減少50%碳排放", 
+        "2050": "達成淨零排放"
+    },
+    "esg_policies": [
+        "循環經濟推動計畫",
+        "綠色供應鏈管理",
+        "員工多元化與包容性政策",
+        "社區投資與社會責任",
+        "透明度與公司治理"
+    ],
+    "carbon_footprint": {
+        "scope1": "直接排放：12,500噸CO2e/年",
+        "scope2": "能源間接排放：8,300噸CO2e/年",
+        "scope3": "其他間接排放：45,200噸CO2e/年"
+    }
+}
+
+# === 身份識別系統 ===
+def get_user_role(chat_id):
+    """獲取用戶身份"""
+    return USER_ROLES.get(chat_id, "consumer")
+
+def set_user_role(chat_id, role):
+    """設定用戶身份"""
+    USER_ROLES[chat_id] = role
+
+# === AI回應功能 ===
 async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    user_role = get_user_role(chat_id)
     prompt = " ".join(context.args)
+    
     if not prompt:
-        await update.message.reply_text("請輸入你想問的問題，例如：/ask 碳排放是什麼？")
+        role_examples = {
+            "manager": "例如：/ask 我們公司的碳排放目標是什麼？",
+            "consumer": "例如：/ask 我的訂單T001現在狀況如何？",
+            "dealer": "例如：/ask Tesla Model 3現在要等多久？"
+        }
+        await update.message.reply_text(f"請輸入你想問的問題，{role_examples.get(user_role, role_examples['consumer'])}")
         return
 
-    await update.message.reply_text("🤖 正在思考中，請稍候...")
+    if not client:
+        await update.message.reply_text("❌ OpenAI API未設定，無法使用AI問答功能")
+        return
+
+    await update.message.reply_text("🤖 正在為您查詢，請稍候...")
 
     try:
+        # 根據身份設定不同的AI角色
+        system_prompts = {
+            "manager": f"""你是一位對碳排放政策及ESG非常了解的公司助理。你可以回答關於：
+            - 碳排放目標：{ESG_DATA['carbon_reduction_targets']}
+            - ESG政策：{', '.join(ESG_DATA['esg_policies'])}
+            - 碳足跡資料：{ESG_DATA['carbon_footprint']}
+            請以專業、詳細的方式回答管理層的問題。""",
+            
+            "consumer": f"""你是一位專業的汽車客戶服務經理，可以幫助客戶查詢訂單狀態。
+            目前的訂單資料：{json.dumps(CUSTOMER_ORDERS, ensure_ascii=False, indent=2)}
+            
+            當客戶詢問訂單狀態時，請提供：
+            1. 訂單當前狀態
+            2. 預計交車時間
+            3. 目前進度說明
+            4. 任何需要注意的事項
+            
+            請以親切、專業的語調回答客戶問題。""",
+            
+            "dealer": f"""你是一位汽車經銷商助理，專門回答關於車輛等候時間和交車預估的問題。
+            目前可供應的車型資訊：{json.dumps(CAR_MODELS, ensure_ascii=False, indent=2)}
+            
+            請提供準確的等候時間、交車預估，並給予客戶合理的期望管理。
+            回答要包含具體的時間範圍和可能影響交車的因素。"""
+        }
+        
+        system_prompt = system_prompts.get(user_role, system_prompts["consumer"])
+        
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "你是一位了解碳排放與企業管理的助理。"},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.7
         )
         answer = response.choices[0].message.content
-        await update.message.reply_text(answer)
+        
+        # 根據身份添加角色標識
+        role_icons = {
+            "manager": "🏢 ESG管理助理",
+            "consumer": "🚗 客戶服務",
+            "dealer": "🤝 經銷商服務"
+        }
+        
+        role_name = role_icons.get(user_role, "🤖 AI助理")
+        await update.message.reply_text(f"{role_name}：\n\n{answer}")
+        
     except Exception as e:
-        await update.message.reply_text(f"❌ GPT 回應失敗：{e}")
+        await update.message.reply_text(f"❌ 系統回應失敗：{e}")
 
-# === 訂閱與通知 ===
-async def subscribe_user(chat_id):
-    SUBSCRIBERS_REF.document(str(chat_id)).set({"subscribed": True})
-
-async def unsubscribe_user(chat_id):
-    SUBSCRIBERS_REF.document(str(chat_id)).delete()
-
-def get_all_subscribers():
-    return [doc.id for doc in SUBSCRIBERS_REF.stream()]
-
-# === 指令 ===
+# === 開始指令 ===
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    await subscribe_user(chat_id)
+    current_role = get_user_role(chat_id)
+    role_names = {"manager": "🏢 管理者", "consumer": "🚗 消費者", "dealer": "🤝 經銷商"}
 
-    # 按鈕連結
+    # 身份選擇按鈕
     keyboard = [
         [
-            InlineKeyboardButton("📊 碳排儀表板", web_app={"url": WEB_APP_URL}),
-            InlineKeyboardButton("🧠 模型決策系統", url="https://cfmcloud.vercel.app/models")
+            InlineKeyboardButton("🏢 管理者模式", callback_data="role_manager"),
+            InlineKeyboardButton("🚗 消費者模式", callback_data="role_consumer")
+        ],
+        [
+            InlineKeyboardButton("🤝 經銷商模式", callback_data="role_dealer"),
+            InlineKeyboardButton("📊 前往儀表板", web_app={"url": WEB_APP_URL})
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await update.message.reply_text(
-        "歡迎使用碳排監控雲\n✅ 你已訂閱碳排通知。\n關閉碳排通知請入/cancel\n\n請選擇功能：",
-        reply_markup=reply_markup
-    )
+    welcome_message = f"""🎯 **歡迎使用智能多角色AI助理系統**
 
+🤖 **當前身份：{role_names.get(current_role, "🚗 消費者")}**
 
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    await unsubscribe_user(chat_id)
-    await update.message.reply_text("❌ 你已取消訂閱碳排通知。")
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-async def list_subscribers(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    subs = get_all_subscribers()
-    text = "📋 訂閱者 chat_id 清單：\n" + "\n".join(subs) if subs else "目前沒有任何訂閱者。"
-    await update.message.reply_text(text)
+🎭 **三種專業服務模式**
 
-async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = " ".join(context.args)
-    if not msg:
-        await update.message.reply_text("請輸入訊息，例如：/broadcast 測試訊息")
-        return
-    count = 0
-    for chat_id in get_all_subscribers():
-        try:
-            await context.bot.send_message(chat_id=int(chat_id), text=f"📢 管理員公告：\n{msg}")
-            count += 1
-        except Exception as e:
-            print(f"❌ 傳送失敗 chat_id={chat_id}: {e}")
-    await update.message.reply_text(f"✅ 已發送給 {count} 位訂閱者")
+🏢 **管理者模式 - ESG政策專家**
+   • 碳排放目標規劃 (2025/2030/2050路徑圖)
+   • ESG策略制定與實施建議  
+   • 碳足跡分析 (Scope 1/2/3排放)
+   • 永續發展政策諮詢
 
-async def carbon(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        docs = (
-            db.collection("carbon_data")
-            .document("logs")
-            .collection("entries")
-            .order_by("timestamp", direction=firestore.Query.DESCENDING)
-            .limit(1)
-            .stream()
-        )
-        latest = next(docs, None)
-        if latest:
-            data = latest.to_dict()
-            text = (
-                f"📊 最新碳排資料：\n"
-                f"🏭 工廠：{data['plant']}\n"
-                f"🌿 CO₂e：{data['co2e']} kg\n"
-                f"🕒 時間：{data['timestamp']}"
-            )
-        else:
-            text = "⚠️ 尚無碳排放資料。"
-    except Exception as e:
-        text = f"❌ 發生錯誤：{e}"
-    await update.message.reply_text(text)
+🚗 **消費者模式 - 客戶服務經理**
+   • 汽車訂單即時狀態查詢
+   • 交車時間預估與進度追蹤
+   • 訂單問題處理與客戶關懷
+   • 支援 Tesla、BYD 等多品牌
 
-# === 定時任務 ===
-async def scheduled_task(application):
-    print("✅ 執行定時任務中...")
-    data = {
-        "plant": random.choice(["台中廠", "台南廠", "桃園廠"]),
-        "co2e": round(random.uniform(1300, 2500), 2),
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+🤝 **經銷商模式 - 業務支援助理**  
+   • 8款車型等候時間查詢
+   • 交車預估與期望管理
+   • 庫存配額狀況說明
+   • 銷售策略與客戶溝通支援
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💡 **使用方法**
+1️⃣ 點選上方按鈕選擇您的身份
+2️⃣ 使用 `/ask [問題]` 獲得專業回答
+
+📝 **範例問題**
+• 管理者：`/ask 2030年減碳目標規劃`
+• 消費者：`/ask 訂單T001的最新狀態`  
+• 經銷商：`/ask Tesla Model Y等候時間`
+
+🔄 **重新選擇身份請再次輸入 /start**"""
+
+    await update.message.reply_text(welcome_message, reply_markup=reply_markup, parse_mode='Markdown')
+
+# === 處理身份選擇的回調 ===
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    chat_id = query.from_user.id
+    
+    role_mapping = {
+        "role_manager": ("manager", "🏢 ESG管理助理"),
+        "role_consumer": ("consumer", "🚗 客戶服務經理"), 
+        "role_dealer": ("dealer", "🤝 經銷商業務助理")
     }
-    db.collection("carbon_data").document("logs").collection("entries").add(data)
-    for chat_id in get_all_subscribers():
-        try:
-            await application.bot.send_message(
-                chat_id=int(chat_id),
-                text=(f"📡 自動上傳碳排資料：\n🏭 {data['plant']}\n🌿 {data['co2e']} kg CO₂e\n🕒 {data['timestamp']}")
-            )
-        except Exception as e:
-            print(f"❌ 傳送失敗 chat_id={chat_id}: {e}")
+    
+    if query.data in role_mapping:
+        role, role_name = role_mapping[query.data]
+        set_user_role(chat_id, role)
+        
+        await query.answer()
+        
+        # 提供身份專屬的使用說明
+        role_instructions = {
+            "manager": """🏢 **ESG管理助理模式已啟用**
+
+您現在可以諮詢：
+• 公司碳排放目標與減碳策略
+• ESG政策制定與實施建議
+• 碳足跡數據分析與報告
+• 永續發展相關法規與趨勢
+
+範例問題：
+• `/ask 我們的2030年減碳目標是什麼？`
+• `/ask ESG報告應包含哪些關鍵指標？`
+• `/ask Scope 3排放如何有效管控？`""",
+            
+            "consumer": """🚗 **客戶服務經理模式已啟用**
+
+您現在可以查詢：
+• 汽車訂單狀態與交車進度  
+• 生產排程與預計交車時間
+• 訂單相關問題與客戶服務
+• Tesla、BYD等品牌車輛資訊
+
+目前可查詢訂單：T001、T002、B001、B002
+
+範例問題：
+• `/ask 我的訂單T001現在狀況如何？`
+• `/ask 什麼時候可以交車？`
+• `/ask Tesla Model 3生產進度更新`""",
+            
+            "dealer": """🤝 **經銷商業務助理模式已啟用**
+
+您現在可以查詢：
+• 8款車型等候時間與交車預估
+• 庫存狀況與生產排程資訊
+• 客戶期望管理與銷售支援
+• 市場趨勢與競品分析
+
+支援車型：Tesla Model 3/Y/S/X、BYD Han/Tang、BMW iX、Audi e-tron
+
+範例問題：
+• `/ask Tesla Model Y現在要等多久？`
+• `/ask 哪款電動車交車時間最短？`
+• `/ask BYD車系的最新交期狀況`"""
+        }
+        
+        instruction = role_instructions.get(role, "")
+        await query.edit_message_text(instruction, parse_mode='Markdown')
 
 # === 主程式 ===
 async def main():
-    app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("cancel", cancel))
-    app.add_handler(CommandHandler("list", list_subscribers))
-    app.add_handler(CommandHandler("broadcast", broadcast))
-    app.add_handler(CommandHandler("carbon", carbon))
-    app.add_handler(CommandHandler("ask", ask))
+    if not TOKEN:
+        print("❌ 請設定 BOT_TOKEN 環境變數")
+        return
+        
+    if not OPENAI_API_KEY:
+        print("⚠️ 未設定 OPENAI_API_KEY，AI問答功能將無法使用")
 
-    scheduler = AsyncIOScheduler(timezone=pytz.timezone("Asia/Taipei"))
-    loop = asyncio.get_event_loop()
-    scheduler.add_job(lambda: asyncio.run_coroutine_threadsafe(scheduled_task(app), loop), "interval", hours=1)
-    scheduler.start()
+    app = ApplicationBuilder().token(TOKEN).build()
+    
+    # 添加指令處理器
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("ask", ask))
+    app.add_handler(CallbackQueryHandler(button_callback))
 
     await app.initialize()
     await app.start()
     await app.updater.start_polling()
-    print("✅ Bot 已啟動：/carbon + /ask + 定時任務")
+    print("✅ 智能多角色AI助理Bot已啟動！")
+    print("📋 可用指令：/start (選擇身份) + /ask (AI問答)")
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.create_task(main())
-    loop.run_forever()
+    asyncio.run(main())
