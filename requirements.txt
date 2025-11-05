@@ -1,4 +1,4 @@
-python-telegram-bot==20.6
+python-telegram-bot>=22.5
 pytz
 openai>=1.0.0
 apscheduler
