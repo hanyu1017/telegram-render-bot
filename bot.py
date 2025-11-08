@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # 配置參數
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '7283679641:AAEPapvJ1AgdNmurSPZ6Xou3ouQY9hJSfP8')
-N8N_WEBHOOK_URL = os.getenv('N8N_WEBHOOK_URL', 'http://localhost:5678/webhook/carbon-query')
+N8N_WEBHOOK_URL = os.getenv('N8N_WEBHOOK_URL', 'https://primary-production-94491.up.railway.app/webhook/carbon-query')
 
 # 對話狀態
 WAITING_QUERY = 1
